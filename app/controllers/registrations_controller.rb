@@ -1,5 +1,6 @@
 class RegistrationsController < ApplicationController
   before_action :set_registration, only: [:show, :edit, :update, :destroy]
+  protect_from_forgery except: :webhook
 
   # GET /registrations
   def index
@@ -24,9 +25,19 @@ class RegistrationsController < ApplicationController
     @registration.process_payment
     @registration.save
     redirect_to @registration, notice: 'Registration was successfully created.'
-  rescue
+  rescue e
     flash[:error] = e.message
     render :new
+  end
+
+  def webhook
+    event = Stripe::Event.retrieve(params["id"])
+
+    case event.type
+      when "invoice.payment_succeeded" #renew subscription
+        Registration.find_by_customer_id(event.data.object.customer).renew
+    end
+    render status: :ok, json: "success"
   end
 
   private
@@ -40,6 +51,6 @@ class RegistrationsController < ApplicationController
 
     # Never trust parameters from the scary internet, only allow the white list through.
     def registration_params
-      params.require(:registration).permit(:course_id, :full_name, :company, :telephone)
+      params.require(:registration).permit(:course_id, :full_name, :company, :telephone, :email, :card_token)
     end
 end
